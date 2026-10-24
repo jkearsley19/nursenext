@@ -57,13 +57,27 @@ if (user) {
   };
   if(!window.supabase?.createClient){status('Login service could not load. Check your internet connection and refresh.');return;}
   client=window.supabase.createClient(url,key,{auth:{flowType:'pkce',detectSessionInUrl:true}});window.nnClient=client;
-  client.auth.getUser().then(({data,error})=>{if(error){status('Please log in to continue.');return;}render(data.user);}).catch(()=>status('Unable to connect to login service.'));
-  client.auth.onAuthStateChange((event,session)=>{render(session?.user||null);if(event==='PASSWORD_RECOVERY'){el('authRecovery').classList.remove('hidden');el('authRecovery').scrollIntoView({behavior:'smooth'});status('Choose a new password below.');}});
+  const recoveryRequested = new URLSearchParams(location.search).get('nn_recovery') === '1' || location.hash.includes('type=recovery');
+  const showRecovery = () => {
+    el('authRecovery').classList.remove('hidden');
+    el('account').scrollIntoView({behavior:'smooth'});
+    status('Password reset link accepted. Enter your new password below.');
+  };
+  client.auth.onAuthStateChange((event,session)=>{
+    render(session?.user||null);
+    if(session?.user && (event==='PASSWORD_RECOVERY' || recoveryRequested)) showRecovery();
+  });
+  client.auth.getUser().then(({data,error})=>{
+    if(error){status('Please log in to continue.');return;}
+    render(data.user);
+    if(data.user && recoveryRequested) showRecovery();
+    if(recoveryRequested && !data.user) status('Reset link could not be verified. Request a fresh password reset email.');
+  }).catch(()=>status('Unable to connect to login service.'));
   window.nnForgotPassword=async()=>{
     const email=el('authEmail').value.trim();
     if(!email){status('Enter your account email first, then choose Forgot password.');return;}
     status('Requesting password reset email...');
-    const {error}=await client.auth.resetPasswordForEmail(email,{redirectTo:'https://jkearsley19.github.io/nursenext/'});
+    const {error}=await client.auth.resetPasswordForEmail(email,{redirectTo:'https://jkearsley19.github.io/nursenext/?nn_recovery=1'});
     status(error?error.message:'If the account exists, check your email for the reset link. Email limits may apply.');
   };
   window.nnUpdatePassword=async()=>{
