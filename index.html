@@ -56,7 +56,7 @@ if (user) {
     el('authUserEmail').textContent=user?.email||'';
   };
   if(!window.supabase?.createClient){status('Login service could not load. Check your internet connection and refresh.');return;}
-  client=window.supabase.createClient(url,key,{auth:{flowType:'pkce',detectSessionInUrl:true}});window.nnClient=client;
+  client=window.supabase.createClient(url,key,{auth:{flowType:'implicit',detectSessionInUrl:true}});window.nnClient=client;
   const recoveryRequested = new URLSearchParams(location.search).get('nn_recovery') === '1' || location.hash.includes('type=recovery');
   const showRecovery = () => {
     el('authRecovery').classList.remove('hidden');
@@ -287,19 +287,46 @@ async function startNurseNextCheckout() {
 </script>
 
 <script>
-function nnFindJobs(){
+async function nnFindJobs(){
  const role=document.getElementById('jobKeywords').value;
  const location=document.getElementById('jobLocation').value.trim()||'United States';
  const mode=document.getElementById('jobMode').value;
- const terms=[role,mode].filter(Boolean).join(' ');
- const indeed='https://www.indeed.com/jobs?q='+encodeURIComponent(terms)+'&l='+encodeURIComponent(location);
- const linkedin='https://www.linkedin.com/jobs/search/?keywords='+encodeURIComponent(terms)+'&location='+encodeURIComponent(location);
- const federal='https://www.usajobs.gov/Search/Results?k='+encodeURIComponent(role);
  const container=document.getElementById('jobLinks');
  container.replaceChildren();
- const p=document.createElement('p');p.className='muted';p.textContent='Searches open in new tabs. These are third-party results; NurseNext has not checked or ranked the postings.';container.append(p);
- for(const [label,url] of [['Search Indeed',indeed],['Search LinkedIn',linkedin],['Search federal jobs (USAJOBS)',federal]]){
+ const info=document.createElement('p');info.className='muted';container.append(info);
+ const link=(label,url)=>{
   const a=document.createElement('a');a.href=url;a.target='_blank';a.rel='noopener noreferrer';a.textContent=label;a.style.cssText='display:inline-block;margin:7px 18px 7px 0';container.append(a);
- }
+ };
+ const terms=[role,mode].filter(Boolean).join(' ');
+ const external=()=>{
+  link('More listings on Indeed','https://www.indeed.com/jobs?q='+encodeURIComponent(terms)+'&l='+encodeURIComponent(location));
+  link('More listings on LinkedIn','https://www.linkedin.com/jobs/search/?keywords='+encodeURIComponent(terms)+'&location='+encodeURIComponent(location));
+  link('Federal jobs on USAJOBS','https://www.usajobs.gov/Search/Results?k='+encodeURIComponent(role));
+ };
+ if(mode!=='remote'){info.textContent='The integrated feed currently covers remote jobs only. Use these external searches for hybrid and onsite positions.';external();return;}
+ if(!window.nnClient){info.textContent='Unable to load job search. Please refresh.';external();return;}
+ const {data:{session}}=await window.nnClient.auth.getSession();
+ if(!session){info.textContent='Sign in below to view integrated remote job postings. You can still use the external searches.';external();return;}
+ info.textContent='Loading remote job postings...';
+ try{
+  const {data,error}=await window.nnClient.functions.invoke('nursenext-jobs',{body:{role}});
+  if(error||!data||!Array.isArray(data.jobs))throw error||new Error('Unexpected response');
+  const jobs=data.jobs;
+  info.textContent=jobs.length?'Remote openings from Himalayas (daily-refreshed source). Verify availability, qualifications and US eligibility.':'No matching remote postings were returned today. Try a different role or the external searches.';
+  for(const j of jobs){
+   const article=document.createElement('div');article.className='role';
+   const h=document.createElement('h3');h.textContent=j.title;article.append(h);
+   const meta=document.createElement('p');meta.textContent=[j.company,j.location,j.employmentType].filter(Boolean).join(' · ');article.append(meta);
+   if(j.excerpt){const desc=document.createElement('p');desc.textContent=j.excerpt;article.append(desc);}
+   if(j.minSalary!=null||j.maxSalary!=null){
+    const salary=document.createElement('p');salary.className='muted';salary.textContent='Reported pay: '+(j.currency||'')+' '+[j.minSalary,j.maxSalary].filter(v=>v!=null).join('–')+' / '+(j.salaryPeriod||'period not specified');article.append(salary);
+   }
+   const apply=document.createElement('a');apply.textContent='Apply through Himalayas';apply.href=j.applyUrl;apply.target='_blank';apply.rel='noopener noreferrer';article.append(apply);
+   const source=document.createElement('p');source.className='muted';source.append('Source: ');
+   const credit=document.createElement('a');credit.textContent='Himalayas';credit.href=j.sourceUrl||'https://himalayas.app';credit.target='_blank';credit.rel='noopener noreferrer';source.append(credit);article.append(source);
+   container.append(article);
+  }
+  external();
+ }catch(e){console.error('NurseNext job feed:',e);info.textContent='Live listings are temporarily unavailable. Try again later or use these external searches.';external();}
 }
 </script></body></html>
