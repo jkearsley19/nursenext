@@ -198,4 +198,34 @@ These terms are a draft, not a substitute for attorney review. They do not preve
   }
 })();
 </script>
+  
+<script>
+async function startNurseNextCheckout() {
+  const client = window.nnClient;
+  if (!client) {
+    alert("Please refresh the page and try again.");
+    return;
+  }
+
+  const { data: { session } } = await client.auth.getSession();
+  if (!session) {
+    alert("Please sign in before purchasing access.");
+    return;
+  }
+
+  const { data, error } = await client.functions.invoke(
+    "create-checkout-session",
+    { body: {} }
+  );
+
+  if (error || !data?.url) {
+    alert("Unable to start test checkout. Please try again.");
+    console.error(error || data);
+    return;
+  }
+
+  window.location.href = data.url;
+}
+</script>
+
 </body></html>
