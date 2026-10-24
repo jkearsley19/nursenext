@@ -23,6 +23,33 @@ These terms are a draft, not a substitute for attorney review. They do not preve
   const el=id=>document.getElementById(id);
   const status=(message)=>{el('authMessage').textContent=message;};
   const render=(user)=>{
+    
+if (user) {
+  window.nnClient
+    .from('nurse_profiles')
+    .select('membership_status, access_expires_at')
+    .eq('user_id', user.id)
+    .maybeSingle()
+    .then(({ data, error }) => {
+      if (error) {
+        console.error('Membership check failed:', error);
+        return;
+      }
+
+      const active = data?.membership_status === 'active' &&
+        data?.access_expires_at &&
+        new Date(data.access_expires_at) > new Date();
+
+      const message = document.getElementById('authMessage');
+      if (message) {
+        message.textContent = active
+          ? 'Membership active through ' +
+            new Date(data.access_expires_at).toLocaleDateString()
+          : 'Signed in. No active paid membership.';
+      }
+    });
+}
+
      window.dispatchEvent(new CustomEvent('nn-user-changed',{detail:{user}}));
     el('authSignedOut').classList.toggle('hidden',!!user);
     el('authSignedIn').classList.toggle('hidden',!user);
